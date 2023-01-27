@@ -1,61 +1,78 @@
-const express = require('express');
-const dotenv = require('dotenv');
-const jwt = require('jsonwebtoken');
-
+const express = require("express");
 const app = express();
+app.use(express.json());
 
-// Set up Global configuration access
-dotenv.config();
+const crypto = require("crypto");
+const algorithm = "aes-256-cbc";
+const key = crypto.randomBytes(32);
+const iv = crypto.randomBytes(16);
+
+app.post("/user/generateToken", (req, res) => {
+  let companyName = "TM30";
+  let clientName = req.body.clientName;
+  let timeStamp = Date.now();
+
+  function decrypt(text) {
+    let iv = Buffer.from(text.iv, "hex");
+    let encryptedText = Buffer.from(text.encryptedData, "hex");
+    let decipher = crypto.createDecipheriv("aes-256-cbc", Buffer.from(key), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  }
+  function makeid(length) {
+    let result = "";
+    const characters =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const charactersLength = characters.length;
+    let counter = 0;
+    while (counter < length) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+      counter += 1;
+    }
+    return result;
+  }
+  let uniqueCharacter = makeid(6);
+  // console.log(uniqueCharacter)
+  const data = companyName + clientName + timeStamp + uniqueCharacter;
+  function encrypt() {
+    let cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(key), iv);
+    let encrypted = cipher.update(data.toString());
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return { iv: iv.toString("hex"), encryptedData: encrypted.toString("hex") };
+  }
+  const testEncrpt = encrypt();
+  res.json({ status: true, token: testEncrpt });
+  // console.log(uniqueCharacter)
+});
+
+app.post("/user/decryptToken", async (req, res) => {
+  const text = req.body;
+  try {
+    async function decrypt() {
+      let iv = Buffer.from(text.iv.toString(), "hex");
+      let encryptedText = Buffer.from(text?.encryptedData.toString(), "hex");
+      let decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        Buffer.from(key),
+        iv
+      );
+      let decrypted = decipher.update(encryptedText);
+      decrypted = Buffer.concat([decrypted, decipher.final()]);
+      return decrypted.toString();
+    }
+    const decrypted = await decrypt(text);
+
+    res.json({ data: decrypted });
+  } catch (error) {
+    res.json({
+      status: false,
+      error: error.stack,
+    });
+  }
+});
 
 let PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-console.log(`Server is up and running on ${PORT} ...`);
-});
-
-// Main Code Here //
-// Generating JWT
-app.post("/user/generateToken", (req, res) => {
-	// Validate User Here
-	// Then generate JWT Token
-
-	let jwtSecretKey = process.env.JWT_SECRET_KEY;
-	let data = {
-        companyName: "TM30",
-        Name:"",
-		time: Date(),
-		userId: 12,
-        random: {
-            type: Number,
-            default : (Math.floor(100000 + Math.random() * 900000)),
-            index: { unique: true }
-        },
-	}
-
-	const token = jwt.sign(data, jwtSecretKey);
-
-	res.send(token);
-});
-
-// Verification of JWT
-app.get("/user/validateToken", (req, res) => {
-	// Tokens are generally passed in header of request
-	// Due to security reasons.
-
-	let tokenHeaderKey = process.env.TOKEN_HEADER_KEY;
-	let jwtSecretKey = process.env.JWT_SECRET_KEY;
-
-	try {
-		const token = req.header(tokenHeaderKey);
-
-		const verified = jwt.verify(token, jwtSecretKey);
-		if(verified){
-			return res.send("Successfully Verified");
-		}else{
-			// Access Denied
-			return res.status(401).send(error);
-		}
-	} catch (error) {
-		// Access Denied
-		return res.status(401).send(error);
-	}
+  console.log(`Server is up and running on ${PORT} ...`);
 });
